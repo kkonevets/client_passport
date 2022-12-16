@@ -15,7 +15,6 @@ pub struct UserMetadata {
 #[ink::contract]
 mod user_passport {
     use ink_prelude::string::String;
-    use ink_prelude::vec::Vec;
     use ink_storage::traits::SpreadAllocate;
 
     /// User Passport storage
@@ -31,7 +30,7 @@ mod user_passport {
         /// Counter of user assets
         assets: ink_storage::Mapping<AccountId, u32>,
         /// User sercret metadate: INN, ...
-        metadata: Vec<u8>,
+        metadata: String,
         /// Marks client's smart contract as active
         active: bool,
         // Store a contract owner
@@ -48,7 +47,7 @@ mod user_passport {
     impl UserPassport {
         /// Constructor that initializes a user password with empty assets
         #[ink(constructor)]
-        pub fn new(surname: String, name: String, birthday: u64, metadata: Vec<u8>) -> Self {
+        pub fn new(surname: String, name: String, birthday: u64, metadata: String) -> Self {
             ink_lang::utils::initialize_contract(|contract: &mut Self| {
                 contract.surname = surname;
                 contract.name = name;
@@ -89,7 +88,7 @@ mod user_passport {
 
         /// Get user metadata
         #[ink(message)]
-        pub fn get_metadata(&self) -> Result<Vec<u8>, Error> {
+        pub fn get_metadata(&self) -> Result<String, Error> {
             if Self::env().caller() == self.owner {
                 Ok(self.metadata.clone())
             } else {
@@ -115,17 +114,22 @@ mod user_passport {
         fn it_works() {
             let metadata = UserMetadata { inn: 3664069397 };
 
+            let metadata_encoded = base64::encode(metadata.try_to_vec().unwrap());
+            println!("base64 encoded metadata: {}", &metadata_encoded);
+
             let mut passport = UserPassport::new(
                 "Иванов".to_owned(),
                 "Иван".to_owned(),
                 503556108,
-                metadata.try_to_vec().unwrap(),
+                metadata_encoded.clone(),
             );
+
             assert_eq!(passport.get_user_name(), "Иванов Иван");
 
             match passport.get_metadata() {
                 Ok(data) => {
-                    let decoded = UserMetadata::try_from_slice(&data).unwrap();
+                    let decoded: Vec<u8> = base64::decode(data).unwrap();
+                    let decoded = UserMetadata::try_from_slice(&decoded).unwrap();
                     assert_eq!(decoded, metadata)
                 }
                 Err(_) => {
