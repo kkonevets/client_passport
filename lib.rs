@@ -1,9 +1,21 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(feature = "std")]
+use borsh::{BorshDeserialize, BorshSerialize};
+
 use ink_lang as ink;
+
+#[cfg(feature = "std")]
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Debug)]
+pub struct UserMetadata {
+    /// User INN number
+    inn: u64,
+}
 
 #[ink::contract]
 mod user_passport {
+    use ink_prelude::string::String;
+    use ink_prelude::vec::Vec;
     use ink_storage::traits::SpreadAllocate;
 
     /// User Passport storage
@@ -52,9 +64,9 @@ mod user_passport {
         #[ink(message)]
         pub fn get_user_name(&self) -> String {
             if Self::env().caller() == self.owner {
-                format!("{} {}", self.surname, &self.name)
+                ink_env::format!("{} {}", &self.surname, &self.name)
             } else {
-                self.surname.to_owned()
+                self.surname.clone()
             }
         }
 
@@ -74,6 +86,16 @@ mod user_passport {
                 Err(Error::CallerIsNotAnOwner)
             }
         }
+
+        /// Get user metadata
+        #[ink(message)]
+        pub fn get_metadata(&self) -> Result<Vec<u8>, Error> {
+            if Self::env().caller() == self.owner {
+                Ok(self.metadata.clone())
+            } else {
+                Err(Error::CallerIsNotAnOwner)
+            }
+        }
     }
 
     /// Unit tests in Rust are normally defined within such a `#[cfg(test)]`
@@ -81,22 +103,35 @@ mod user_passport {
     /// The below code is technically just normal Rust code.
     #[cfg(test)]
     mod tests {
-        /// Imports all the definitions from the outer scope so we can use them here.
-        use crate::user_passport::{Error, UserPassport};
+        use crate::user_passport::*;
+        use crate::UserMetadata;
 
+        use borsh::{BorshDeserialize, BorshSerialize};
         /// Imports `ink_lang` so we can use `#[ink::test]`.
         use ink_lang as ink;
 
         /// We test a simple use case of our contract.
         #[ink::test]
         fn it_works() {
+            let metadata = UserMetadata { inn: 3664069397 };
+
             let mut passport = UserPassport::new(
                 "Иванов".to_owned(),
                 "Иван".to_owned(),
                 503556108,
-                vec![0, 0, 0],
+                metadata.try_to_vec().unwrap(),
             );
             assert_eq!(passport.get_user_name(), "Иванов Иван");
+
+            match passport.get_metadata() {
+                Ok(data) => {
+                    let decoded = UserMetadata::try_from_slice(&data).unwrap();
+                    assert_eq!(decoded, metadata)
+                }
+                Err(_) => {
+                    assert!(false, "Metadata should be available");
+                }
+            }
 
             let the_owner = passport.owner.to_owned();
 
@@ -106,6 +141,9 @@ mod user_passport {
             assert_eq!(passport.get_user_name(), "Иванов");
 
             let result = passport.deactivate();
+            assert_eq!(result, Err(Error::CallerIsNotAnOwner));
+
+            let result = passport.get_metadata();
             assert_eq!(result, Err(Error::CallerIsNotAnOwner));
 
             passport.owner = the_owner;
