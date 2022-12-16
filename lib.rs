@@ -45,21 +45,23 @@ mod user_passport {
     }
 
     impl UserPassport {
-        /// Constructor that initializes a user password with empty assets
+        /// Constructor that initializes a user passport with the contract as a single asset
         #[ink(constructor)]
         pub fn new(surname: String, name: String, birthday: u64, metadata: String) -> Self {
             ink_lang::utils::initialize_contract(|contract: &mut Self| {
+                let caller = Self::env().caller();
+                contract.assets.insert(&caller, &1);
+
                 contract.surname = surname;
                 contract.name = name;
                 contract.birthday = birthday;
                 contract.metadata = metadata;
                 contract.active = true;
-                contract.owner = Self::env().caller();
-                // assets are empty initialized
+                contract.owner = caller;
             })
         }
 
-        /// Get user name and surname if a caller is a contract owner, else only a name
+        /// Get user name and surname if a caller is a contract owner, else only a surname
         #[ink(message)]
         pub fn get_user_name(&self) -> String {
             if Self::env().caller() == self.owner {
@@ -126,21 +128,14 @@ mod user_passport {
 
             assert_eq!(passport.get_user_name(), "Иванов Иван");
 
-            match passport.get_metadata() {
-                Ok(data) => {
-                    let decoded: Vec<u8> = base64::decode(data).unwrap();
-                    let decoded = UserMetadata::try_from_slice(&decoded).unwrap();
-                    assert_eq!(decoded, metadata)
-                }
-                Err(_) => {
-                    assert!(false, "Metadata should be available");
-                }
-            }
+            let data = passport.get_metadata().unwrap();
+            let decoded: Vec<u8> = base64::decode(data).unwrap();
+            let decoded = UserMetadata::try_from_slice(&decoded).unwrap();
+            assert_eq!(decoded, metadata);
 
             let the_owner = passport.owner.to_owned();
 
-            let array = [0; 32];
-            let account_id: ink_env::AccountId = array.into();
+            let account_id: ink_env::AccountId = [0; 32].into();
             passport.owner = account_id;
             assert_eq!(passport.get_user_name(), "Иванов");
 
